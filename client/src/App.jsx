@@ -8,6 +8,9 @@ import Vocabulary from './pages/Vocabulary';
 import Grammar from './pages/Grammar';
 import Reading from './pages/Reading';
 import Listening from './pages/Listening';
+import TestLibrary from './pages/TestLibrary';
+import ImportTest from './pages/ImportTest';
+import TestPreview from './pages/TestPreview';
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth();
@@ -29,6 +32,9 @@ export default function App() {
         <Route path="/grammar" element={<ProtectedRoute><Grammar /></ProtectedRoute>} />
         <Route path="/reading" element={<ProtectedRoute><Reading /></ProtectedRoute>} />
         <Route path="/listening" element={<ProtectedRoute><Listening /></ProtectedRoute>} />
+        <Route path="/tests" element={<ProtectedRoute><TestLibrary /></ProtectedRoute>} />
+        <Route path="/tests/import" element={<ProtectedRoute><ImportTest /></ProtectedRoute>} />
+        <Route path="/tests/:id" element={<ProtectedRoute><TestPreview /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>
