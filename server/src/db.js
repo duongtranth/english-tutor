@@ -6,6 +6,7 @@ const dataDir = path.join(__dirname, '..', 'data');
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
 const db = new DatabaseSync(path.join(dataDir, 'app.db'));
+db.exec('PRAGMA foreign_keys = ON;');
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
@@ -101,7 +102,6 @@ CREATE TABLE IF NOT EXISTS listening_attempts (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
--- Flexible test-library schema used by imported IELTS/TOEIC tests.
 CREATE TABLE IF NOT EXISTS tests (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id),
