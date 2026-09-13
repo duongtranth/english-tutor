@@ -16,6 +16,7 @@ export default function NavBar() {
         <NavLink to="/grammar">Grammar</NavLink>
         <NavLink to="/reading">Reading</NavLink>
         <NavLink to="/listening">Listening</NavLink>
+        <NavLink to="/tests">Tests</NavLink>
       </div>
       <div className="navbar-right">
         <select value={examType} onChange={(e) => setExamType(e.target.value)}>
