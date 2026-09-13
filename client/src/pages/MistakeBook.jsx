@@ -37,6 +37,12 @@ export default function MistakeBook() {
     return acc;
   }, {}), [items]);
 
+  const weakest = useMemo(() => Object.entries(counts)
+    .filter(([name]) => name !== 'mixed')
+    .sort((a, b) => b[1] - a[1])[0] || null, [counts]);
+
+  const uniqueTests = useMemo(() => new Set(items.map((item) => item.test_id)).size, [items]);
+
   return (
     <main className="page mistakes-page">
       <div className="page-heading-row">
@@ -48,6 +54,14 @@ export default function MistakeBook() {
       </div>
 
       {error && <div className="alert error">{error}</div>}
+
+      {!loading && items.length > 0 && (
+        <section className="mistake-summary-grid">
+          <div className="card"><span>Total mistakes</span><strong>{items.length}</strong></div>
+          <div className="card"><span>Tests involved</span><strong>{uniqueTests}</strong></div>
+          <div className="card"><span>Most mistakes</span><strong>{weakest ? `${weakest[0]} · ${weakest[1]}` : '—'}</strong></div>
+        </section>
+      )}
 
       <div className="mistake-filters">
         {['all', 'listening', 'reading', 'writing', 'speaking', 'mixed'].map((name) => (
