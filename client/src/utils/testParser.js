@@ -114,8 +114,9 @@ function parseQuestions(section) {
     const line = lines[i];
     const range = extractQuestionRange(line);
     if (range) {
-      activeInstruction = [...instructionBuffer.slice(-3), line].join('\n');
       instructionBuffer.push(line);
+      if (instructionBuffer.length > 10) instructionBuffer.shift();
+      activeInstruction = instructionBuffer.slice(-6).join('\n');
       continue;
     }
 
@@ -145,12 +146,15 @@ function parseQuestions(section) {
     if (current) {
       if (/^(Questions?|READING PASSAGE|SECTION|PART)\b/i.test(line)) {
         instructionBuffer.push(line);
+        if (instructionBuffer.length > 10) instructionBuffer.shift();
+        activeInstruction = instructionBuffer.slice(-6).join('\n');
       } else {
         current.prompt.push(line);
       }
     } else {
       instructionBuffer.push(line);
       if (instructionBuffer.length > 10) instructionBuffer.shift();
+      activeInstruction = instructionBuffer.slice(-6).join('\n');
     }
   }
   finishCurrent();
