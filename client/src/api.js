@@ -17,7 +17,10 @@ async function request(path, { method = 'GET', body, auth = true } = {}) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(data.error || `Request failed with status ${res.status}`);
+    const error = new Error(data.error || `Request failed with status ${res.status}`);
+    error.data = data;
+    error.status = res.status;
+    throw error;
   }
   return data;
 }
@@ -58,6 +61,9 @@ export const api = {
   listeningItem: (id) => request(`/listening/items/${id}`),
   listeningAttempt: (id, answers) =>
     request(`/listening/items/${id}/attempt`, { method: 'POST', body: { answers } }),
+
+  ocrStatus: () => request('/ocr/status'),
+  ocrDocument: (payload) => request('/ocr/document', { method: 'POST', body: payload }),
 
   tests: (examType) => request(`/tests${examType ? `?examType=${examType}` : ''}`),
   test: (id) => request(`/tests/${id}`),
