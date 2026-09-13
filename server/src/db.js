@@ -174,6 +174,12 @@ CREATE INDEX IF NOT EXISTS idx_test_sections_test ON test_sections(test_id, sect
 CREATE INDEX IF NOT EXISTS idx_test_questions_section ON test_questions(section_id, question_number);
 CREATE INDEX IF NOT EXISTS idx_test_attempts_user ON test_attempts(user_id, test_id, submitted_at);
 CREATE INDEX IF NOT EXISTS idx_test_attempt_answers_attempt ON test_attempt_answers(attempt_id, is_correct);
+
+CREATE TRIGGER IF NOT EXISTS invalidate_attempts_before_section_delete
+BEFORE DELETE ON test_sections
+BEGIN
+  DELETE FROM test_attempts WHERE test_id = OLD.test_id;
+END;
 `);
 
 module.exports = db;
