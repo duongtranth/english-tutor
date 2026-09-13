@@ -34,6 +34,17 @@ function serializeTest(test) {
   return { ...test, files, sections };
 }
 
+function serializeTestForTaking(test) {
+  const full = serializeTest(test);
+  return {
+    ...full,
+    sections: full.sections.map((section) => ({
+      ...section,
+      questions: section.questions.map(({ correctAnswer, explanation, ...question }) => question),
+    })),
+  };
+}
+
 function insertStructure(testId, sections, fileIdByClientKey = new Map()) {
   const insertSection = db.prepare(`
     INSERT INTO test_sections (test_id, skill, section_number, title, instructions, passage, audio_file_id, metadata_json)
@@ -78,28 +89,127 @@ function insertStructure(testId, sections, fileIdByClientKey = new Map()) {
   }
 }
 
+function cleanText(value) {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'");
+}
+
+function optionLetter(value) {
+  const match = cleanText(value).match(/^\(?([A-H])(?:[.)\s]|$)/i);
+  return match ? match[1].toUpperCase() : null;
+}
+
+function normalizedToken(value, questionType) {
+  const text = cleanText(value);
+  if (!text) return '';
+  if (questionType === 'multiple_choice' || questionType === 'matching_headings' || questionType === 'matching_information') {
+    return optionLetter(text) || text.toUpperCase();
+  }
+  if (questionType === 'true_false_not_given' || questionType === 'yes_no_not_given') return text.toUpperCase();
+  return text
+    .toLowerCase()
+    .replace(/[.,;:!?]+$/g, '')
+    .trim();
+}
+
+function multiTokens(value, questionType) {
+  if (Array.isArray(value)) return value.map((item) => normalizedToken(item, questionType)).filter(Boolean).sort();
+  const text = cleanText(value);
+  if (!text) return [];
+  if (questionType === 'multiple_select') {
+    return text.split(/\s*(?:,|\/|&|\band\b)\s*/i).map((item) => optionLetter(item) || item.toUpperCase()).filter(Boolean).sort();
+  }
+  return [normalizedToken(text, questionType)].filter(Boolean);
+}
+
+function hasGradableAnswer(value) {
+  if (Array.isArray(value)) return value.some((item) => cleanText(item));
+  return cleanText(value) !== '' && value !== null && value !== undefined;
+}
+
+function isAnswerCorrect(userAnswer, correctAnswer, questionType) {
+  if (!hasGradableAnswer(correctAnswer)) return null;
+
+  if (questionType === 'multiple_select') {
+    const user = multiTokens(userAnswer, questionType);
+    const correct = multiTokens(correctAnswer, questionType);
+    return user.length === correct.length && user.every((token, i) => token === correct[i]);
+  }
+
+  const userValues = Array.isArray(userAnswer) ? userAnswer : [userAnswer];
+  const correctValues = Array.isArray(correctAnswer) ? correctAnswer : [correctAnswer];
+  const normalizedCorrect = correctValues.map((item) => normalizedToken(item, questionType)).filter(Boolean);
+  const normalizedUser = userValues.map((item) => normalizedToken(item, questionType)).filter(Boolean);
+  return normalizedUser.length === 1 && normalizedCorrect.includes(normalizedUser[0]);
+}
+
+function serializeAttempt(attempt, includeAnswers = false) {
+  const result = { ...attempt };
+  if (includeAnswers) {
+    result.answers = db.prepare(`
+      SELECT aa.*, q.question_number, q.question_type, q.prompt, q.options_json,
+             s.title AS section_title, s.skill
+      FROM test_attempt_answers aa
+      JOIN test_questions q ON q.id = aa.question_id
+      JOIN test_sections s ON s.id = q.section_id
+      WHERE aa.attempt_id = ?
+      ORDER BY s.section_number, q.question_number, q.id
+    `).all(attempt.id).map((row) => ({
+      ...row,
+      options: parseJson(row.options_json, []),
+      userAnswer: parseJson(row.user_answer_json, null),
+      correctAnswer: parseJson(row.correct_answer_json, null),
+    }));
+  }
+  return result;
+}
+
 router.get('/', (req, res) => {
   const examType = req.query.examType;
-  let rows;
-  if (examType === 'IELTS' || examType === 'TOEIC') {
-    rows = db.prepare(`
-      SELECT t.*,
-        (SELECT COUNT(*) FROM test_sections s WHERE s.test_id = t.id) AS section_count,
-        (SELECT COUNT(*) FROM test_files f WHERE f.test_id = t.id) AS file_count
-      FROM tests t
-      WHERE t.user_id = ? AND t.exam_type = ?
-      ORDER BY t.updated_at DESC, t.id DESC
-    `).all(req.userId, examType);
-  } else {
-    rows = db.prepare(`
-      SELECT t.*,
-        (SELECT COUNT(*) FROM test_sections s WHERE s.test_id = t.id) AS section_count,
-        (SELECT COUNT(*) FROM test_files f WHERE f.test_id = t.id) AS file_count
-      FROM tests t
-      WHERE t.user_id = ?
-      ORDER BY t.updated_at DESC, t.id DESC
-    `).all(req.userId);
-  }
+  const examClause = examType === 'IELTS' || examType === 'TOEIC' ? 'AND t.exam_type = ?' : '';
+  const args = examClause ? [req.userId, examType] : [req.userId];
+  const rows = db.prepare(`
+    SELECT t.*,
+      (SELECT COUNT(*) FROM test_sections s WHERE s.test_id = t.id) AS section_count,
+      (SELECT COUNT(*) FROM test_files f WHERE f.test_id = t.id) AS file_count,
+      (SELECT COUNT(*) FROM test_attempts a WHERE a.test_id = t.id AND a.user_id = t.user_id) AS attempt_count,
+      (SELECT score FROM test_attempts a WHERE a.test_id = t.id AND a.user_id = t.user_id ORDER BY a.submitted_at DESC, a.id DESC LIMIT 1) AS last_score,
+      (SELECT total FROM test_attempts a WHERE a.test_id = t.id AND a.user_id = t.user_id ORDER BY a.submitted_at DESC, a.id DESC LIMIT 1) AS last_total
+    FROM tests t
+    WHERE t.user_id = ? ${examClause}
+    ORDER BY t.updated_at DESC, t.id DESC
+  `).all(...args);
+  res.json(rows);
+});
+
+router.get('/mistakes', (req, res) => {
+  const examType = req.query.examType;
+  const examClause = examType === 'IELTS' || examType === 'TOEIC' ? 'AND t.exam_type = ?' : '';
+  const args = examClause ? [req.userId, examType] : [req.userId];
+  const rows = db.prepare(`
+    SELECT aa.id, aa.attempt_id, aa.question_id, aa.user_answer_json, aa.correct_answer_json,
+           q.question_number, q.question_type, q.prompt, q.options_json,
+           s.title AS section_title, s.skill,
+           t.id AS test_id, t.title AS test_title, t.exam_type,
+           a.submitted_at
+    FROM test_attempt_answers aa
+    JOIN test_attempts a ON a.id = aa.attempt_id
+    JOIN test_questions q ON q.id = aa.question_id
+    JOIN test_sections s ON s.id = q.section_id
+    JOIN tests t ON t.id = a.test_id
+    WHERE a.user_id = ? AND aa.is_correct = 0 ${examClause}
+    ORDER BY a.submitted_at DESC, aa.id DESC
+    LIMIT 200
+  `).all(...args).map((row) => ({
+    ...row,
+    options: parseJson(row.options_json, []),
+    userAnswer: parseJson(row.user_answer_json, null),
+    correctAnswer: parseJson(row.correct_answer_json, null),
+  }));
   res.json(rows);
 });
 
@@ -107,6 +217,115 @@ router.get('/:id', (req, res) => {
   const test = db.prepare('SELECT * FROM tests WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
   if (!test) return res.status(404).json({ error: 'Test not found' });
   res.json(serializeTest(test));
+});
+
+router.get('/:id/take', (req, res) => {
+  const test = db.prepare('SELECT * FROM tests WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
+  if (!test) return res.status(404).json({ error: 'Test not found' });
+  if (test.status !== 'ready') return res.status(409).json({ error: 'Review the test and mark it ready before taking it.' });
+  res.json(serializeTestForTaking(test));
+});
+
+router.get('/:id/files/:fileId', (req, res) => {
+  const file = db.prepare(`
+    SELECT f.* FROM test_files f
+    JOIN tests t ON t.id = f.test_id
+    WHERE f.id = ? AND f.test_id = ? AND t.user_id = ?
+  `).get(req.params.fileId, req.params.id, req.userId);
+  if (!file) return res.status(404).json({ error: 'File not found' });
+  const target = path.join(uploadsDir, file.stored_name);
+  if (!fs.existsSync(target)) return res.status(404).json({ error: 'Stored file is missing' });
+  if (file.mime_type) res.type(file.mime_type);
+  res.setHeader('Content-Disposition', `inline; filename="${String(file.original_name).replace(/"/g, '')}"`);
+  res.sendFile(target);
+});
+
+router.get('/:id/attempts', (req, res) => {
+  const test = db.prepare('SELECT id FROM tests WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
+  if (!test) return res.status(404).json({ error: 'Test not found' });
+  const attempts = db.prepare(`
+    SELECT * FROM test_attempts
+    WHERE test_id = ? AND user_id = ?
+    ORDER BY submitted_at DESC, id DESC
+    LIMIT 50
+  `).all(test.id, req.userId);
+  res.json(attempts);
+});
+
+router.get('/:id/attempts/:attemptId', (req, res) => {
+  const attempt = db.prepare(`
+    SELECT a.* FROM test_attempts a
+    JOIN tests t ON t.id = a.test_id
+    WHERE a.id = ? AND a.test_id = ? AND a.user_id = ? AND t.user_id = ?
+  `).get(req.params.attemptId, req.params.id, req.userId, req.userId);
+  if (!attempt) return res.status(404).json({ error: 'Attempt not found' });
+  res.json(serializeAttempt(attempt, true));
+});
+
+router.post('/:id/submit', (req, res) => {
+  const test = db.prepare('SELECT * FROM tests WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
+  if (!test) return res.status(404).json({ error: 'Test not found' });
+  if (test.status !== 'ready') return res.status(409).json({ error: 'Test is not ready.' });
+
+  const submittedAnswers = req.body?.answers && typeof req.body.answers === 'object' ? req.body.answers : {};
+  const elapsedSeconds = Math.max(0, Math.min(Number(req.body?.elapsedSeconds) || 0, 24 * 60 * 60));
+  const questions = db.prepare(`
+    SELECT q.*, s.section_number, s.skill, s.title AS section_title
+    FROM test_questions q
+    JOIN test_sections s ON s.id = q.section_id
+    WHERE s.test_id = ?
+    ORDER BY s.section_number, q.question_number, q.id
+  `).all(test.id);
+  if (!questions.length) return res.status(400).json({ error: 'This test has no questions.' });
+
+  const graded = [];
+  let score = 0;
+  let total = 0;
+  let answeredCount = 0;
+
+  for (const question of questions) {
+    const correctAnswer = parseJson(question.correct_answer_json, null);
+    const userAnswer = submittedAnswers[String(question.id)] ?? submittedAnswers[question.id] ?? null;
+    if (Array.isArray(userAnswer) ? userAnswer.length > 0 : cleanText(userAnswer) !== '') answeredCount += 1;
+    const result = isAnswerCorrect(userAnswer, correctAnswer, question.question_type);
+    if (result !== null) {
+      total += 1;
+      if (result) score += 1;
+    }
+    graded.push({ question, userAnswer, correctAnswer, isCorrect: result });
+  }
+
+  let attemptId;
+  try {
+    db.exec('BEGIN');
+    attemptId = Number(db.prepare(`
+      INSERT INTO test_attempts (test_id, user_id, score, total, answered_count, elapsed_seconds)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(test.id, req.userId, score, total, answeredCount, elapsedSeconds).lastInsertRowid);
+
+    const insertAnswer = db.prepare(`
+      INSERT INTO test_attempt_answers (attempt_id, question_id, user_answer_json, correct_answer_json, is_correct)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    for (const item of graded) {
+      if (item.isCorrect === null) continue;
+      insertAnswer.run(
+        attemptId,
+        item.question.id,
+        JSON.stringify(item.userAnswer ?? null),
+        JSON.stringify(item.correctAnswer ?? null),
+        item.isCorrect ? 1 : 0
+      );
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    try { db.exec('ROLLBACK'); } catch {}
+    console.error(err);
+    return res.status(500).json({ error: 'Failed to save test result' });
+  }
+
+  const attempt = db.prepare('SELECT * FROM test_attempts WHERE id = ?').get(attemptId);
+  res.status(201).json(serializeAttempt(attempt, true));
 });
 
 router.post('/import', (req, res) => {

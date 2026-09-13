@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "ocr:setup": "bash ocr/setup_ocr.sh",
+    "ocr:download": ".venv-ocr/bin/python ocr/download_model.py"
   },
   "keywords": [],
   "author": "",

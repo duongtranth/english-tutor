@@ -17,9 +17,24 @@ async function request(path, { method = 'GET', body, auth = true } = {}) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(data.error || `Request failed with status ${res.status}`);
+    const error = new Error(data.error || `Request failed with status ${res.status}`);
+    error.data = data;
+    error.status = res.status;
+    throw error;
   }
   return data;
+}
+
+async function requestBlob(path) {
+  const headers = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}${path}`, { headers });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Request failed with status ${res.status}`);
+  }
+  return res.blob();
 }
 
 export const api = {
@@ -47,8 +62,18 @@ export const api = {
   listeningAttempt: (id, answers) =>
     request(`/listening/items/${id}/attempt`, { method: 'POST', body: { answers } }),
 
+  ocrStatus: () => request('/ocr/status'),
+  ocrDocument: (payload) => request('/ocr/document', { method: 'POST', body: payload }),
+
   tests: (examType) => request(`/tests${examType ? `?examType=${examType}` : ''}`),
   test: (id) => request(`/tests/${id}`),
+  testForTaking: (id) => request(`/tests/${id}/take`),
+  testAttempts: (id) => request(`/tests/${id}/attempts`),
+  testAttempt: (id, attemptId) => request(`/tests/${id}/attempts/${attemptId}`),
+  submitTest: (id, answers, elapsedSeconds) =>
+    request(`/tests/${id}/submit`, { method: 'POST', body: { answers, elapsedSeconds } }),
+  testMistakes: (examType) => request(`/tests/mistakes${examType ? `?examType=${examType}` : ''}`),
+  testFile: (id, fileId) => requestBlob(`/tests/${id}/files/${fileId}`),
   importTest: (payload) => request('/tests/import', { method: 'POST', body: payload }),
   replaceTestStructure: (id, sections) => request(`/tests/${id}/structure`, { method: 'PUT', body: { sections } }),
   updateTest: (id, payload) => request(`/tests/${id}`, { method: 'PATCH', body: payload }),

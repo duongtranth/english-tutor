@@ -61,9 +61,17 @@ function payloadSections(sections) {
   }));
 }
 
+function formatElapsed(seconds = 0) {
+  const total = Math.max(0, Number(seconds) || 0);
+  const minutes = Math.floor(total / 60);
+  const rest = total % 60;
+  return `${minutes}:${String(rest).padStart(2, '0')}`;
+}
+
 export default function TestPreview() {
   const { id } = useParams();
   const [test, setTest] = useState(null);
+  const [attempts, setAttempts] = useState([]);
   const [draftSections, setDraftSections] = useState([]);
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -72,10 +80,11 @@ export default function TestPreview() {
 
   useEffect(() => {
     let active = true;
-    api.test(id)
-      .then((data) => {
+    Promise.all([api.test(id), api.testAttempts(id)])
+      .then(([data, attemptRows]) => {
         if (!active) return;
         setTest(data);
+        setAttempts(attemptRows);
         setDraftSections(editableSections(data.sections));
       })
       .catch((err) => active && setError(err.message))
@@ -164,6 +173,12 @@ export default function TestPreview() {
 
   const questionCount = test.sections.reduce((sum, section) => sum + section.questions.length, 0);
   const answeredCount = test.sections.reduce((sum, section) => sum + section.questions.filter((question) => question.correctAnswer != null && question.correctAnswer !== '').length, 0);
+  const bestAttempt = attempts.reduce((best, attempt) => {
+    if (!attempt.total) return best;
+    const ratio = attempt.score / attempt.total;
+    if (!best || ratio > best.ratio) return { ...attempt, ratio };
+    return best;
+  }, null);
 
   return (
     <main className="page test-preview-page">
@@ -177,6 +192,7 @@ export default function TestPreview() {
           <span className={`status-pill ${test.status}`}>{test.status}</span>
           {!editing && <button className="btn-secondary" onClick={startEditing}>Edit parsed data</button>}
           {test.status !== 'ready' && !editing && <button className="btn-primary" onClick={markReady} disabled={saving}>{saving ? 'Saving…' : 'Mark ready'}</button>}
+          {test.status === 'ready' && !editing && <Link className="btn-primary" to={`/tests/${id}/take`}>Start test</Link>}
         </div>
       </div>
 
@@ -196,6 +212,31 @@ export default function TestPreview() {
           </div>
         )}
       </section>
+
+      {attempts.length > 0 && (
+        <section className="card attempt-history-card">
+          <div className="section-heading-row">
+            <div>
+              <h2>Attempt history</h2>
+              <p className="muted">Track recent scores and time spent on this test.</p>
+            </div>
+            {bestAttempt && <strong>Best {bestAttempt.score}/{bestAttempt.total} · {Math.round(bestAttempt.ratio * 100)}%</strong>}
+          </div>
+          <div className="attempt-history-list">
+            {attempts.slice(0, 10).map((attempt) => (
+              <div className="attempt-history-row" key={attempt.id}>
+                <div>
+                  <strong>{attempt.score}/{attempt.total}</strong>
+                  <span>{attempt.total ? `${Math.round((attempt.score / attempt.total) * 100)}%` : 'ungraded'}</span>
+                </div>
+                <span>{attempt.answered_count} answered</span>
+                <span>{formatElapsed(attempt.elapsed_seconds)}</span>
+                <span>{new Date(`${attempt.submitted_at}Z`).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="card parsed-structure-card">
         <div className="section-heading-row">

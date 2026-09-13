@@ -21,7 +21,7 @@ export default function TestLibrary() {
   }, [examType]);
 
   async function removeTest(id) {
-    if (!window.confirm('Delete this imported test and its uploaded files?')) return;
+    if (!window.confirm('Delete this imported test, attempts, and uploaded files?')) return;
     try {
       await api.deleteTest(id);
       setTests((items) => items.filter((item) => item.id !== id));
@@ -37,7 +37,10 @@ export default function TestLibrary() {
           <h1>Test Library</h1>
           <p className="muted">Your imported {examType} practice tests.</p>
         </div>
-        <Link className="btn-primary" to="/tests/import">+ Import test</Link>
+        <div className="inline-actions">
+          <Link className="btn-secondary" to="/mistakes">Mistake Book</Link>
+          <Link className="btn-primary" to="/tests/import">+ Import test</Link>
+        </div>
       </div>
 
       {error && <div className="alert error">{error}</div>}
@@ -62,9 +65,19 @@ export default function TestLibrary() {
               <div className="test-meta">
                 <span>{test.file_count} file{test.file_count === 1 ? '' : 's'}</span>
                 <span>{test.section_count} section{test.section_count === 1 ? '' : 's'}</span>
+                <span>{test.attempt_count || 0} attempt{test.attempt_count === 1 ? '' : 's'}</span>
               </div>
+              {test.last_total > 0 && (
+                <div className="last-score">
+                  Last score <strong>{test.last_score}/{test.last_total}</strong>
+                  <span>{Math.round((test.last_score / test.last_total) * 100)}%</span>
+                </div>
+              )}
               <div className="test-actions">
-                <Link className="btn-secondary" to={`/tests/${test.id}`}>Preview</Link>
+                <div className="inline-actions">
+                  <Link className="btn-secondary" to={`/tests/${test.id}`}>Preview</Link>
+                  {test.status === 'ready' && <Link className="btn-primary" to={`/tests/${test.id}/take`}>Start test</Link>}
+                </div>
                 <button className="btn-link danger" onClick={() => removeTest(test.id)}>Delete</button>
               </div>
             </article>
