@@ -12,11 +12,11 @@ const readingRoutes = require('./routes/reading');
 const listeningRoutes = require('./routes/listening');
 const progressRoutes = require('./routes/progress');
 const testRoutes = require('./routes/tests');
+const ocrRoutes = require('./routes/ocr');
 
 const app = express();
 app.use(cors());
-// Phase 1 imports encode local PDF/audio files as base64 JSON.
-// Keep this generous enough for one personal practice test bundle.
+// Imports and local OCR encode source files as base64 JSON.
 app.use(express.json({ limit: '80mb' }));
 
 app.use('/api/auth', authRoutes);
@@ -26,6 +26,7 @@ app.use('/api/reading', readingRoutes);
 app.use('/api/listening', listeningRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/tests', testRoutes);
+app.use('/api/ocr', ocrRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
