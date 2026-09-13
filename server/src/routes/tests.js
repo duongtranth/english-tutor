@@ -79,8 +79,11 @@ router.post('/import', (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
-  const tx = db.transaction(() => {
-    const testId = Number(insertTest.run(req.userId, examType, title.trim(), source.trim(), 'draft').lastInsertRowid);
+  const writtenFiles = [];
+  let testId = null;
+  try {
+    db.exec('BEGIN');
+    testId = Number(insertTest.run(req.userId, examType, title.trim(), source.trim(), 'draft').lastInsertRowid);
     const fileIdByClientKey = new Map();
 
     for (const file of files) {
@@ -90,7 +93,9 @@ router.post('/import', (req, res) => {
       const storedName = `${testId}-${crypto.randomUUID()}${safeExt}`;
       const raw = String(file.dataBase64).includes(',') ? String(file.dataBase64).split(',').pop() : String(file.dataBase64);
       const buffer = Buffer.from(raw, 'base64');
-      fs.writeFileSync(path.join(uploadsDir, storedName), buffer);
+      const target = path.join(uploadsDir, storedName);
+      fs.writeFileSync(target, buffer);
+      writtenFiles.push(target);
       const info = insertFile.run(testId, kind, file.name, storedName, file.type || null, buffer.length);
       if (file.clientKey) fileIdByClientKey.set(file.clientKey, Number(info.lastInsertRowid));
     }
@@ -122,14 +127,15 @@ router.post('/import', (req, res) => {
         );
       }
     }
-    return testId;
-  });
 
-  try {
-    const testId = tx();
-    const test = db.prepare('SELECT * FROM tests WHERE id = ?').get(testId);
+    db.exec('COMMIT');
+    const test = db.prepare('SELECT * FROM tests WHERE id = ? AND user_id = ?').get(testId, req.userId);
     res.status(201).json(serializeTest(test));
   } catch (err) {
+    try { db.exec('ROLLBACK'); } catch {}
+    for (const target of writtenFiles) {
+      try { if (fs.existsSync(target)) fs.unlinkSync(target); } catch {}
+    }
     console.error(err);
     res.status(500).json({ error: 'Failed to import test' });
   }
