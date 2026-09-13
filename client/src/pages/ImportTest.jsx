@@ -18,13 +18,26 @@ function guessKind(file) {
   const name = file.name.toLowerCase();
   if (file.type.startsWith('audio/')) return 'audio';
   if (name.includes('answer') || name.includes('key')) return 'answer';
-  if (file.type === 'application/pdf' || name.endsWith('.pdf') || name.endsWith('.txt')) return 'question';
+  if (
+    file.type === 'application/pdf' || file.type.startsWith('image/') ||
+    name.endsWith('.pdf') || name.endsWith('.txt') || name.endsWith('.md')
+  ) return 'question';
   return 'other';
 }
 
-function supportsTextExtraction(file) {
+function supportsExtraction(file) {
   const name = file.name.toLowerCase();
-  return file.type === 'application/pdf' || file.type.startsWith('text/') || name.endsWith('.pdf') || name.endsWith('.txt') || name.endsWith('.md');
+  return file.type === 'application/pdf' || file.type.startsWith('text/') || file.type.startsWith('image/') ||
+    name.endsWith('.pdf') || name.endsWith('.txt') || name.endsWith('.md') || /\.(png|jpe?g|webp|bmp|tiff?)$/i.test(name);
+}
+
+function progressLabel(fileName, detail) {
+  const page = detail?.page ? ` · page ${detail.page}${detail.pages ? `/${detail.pages}` : ''}` : '';
+  const pct = typeof detail?.progress === 'number' ? ` · ${Math.round(detail.progress * 100)}%` : '';
+  if (detail?.phase === 'ocr-fallback') return `${fileName}: no embedded text found — switching to OCR…`;
+  if (detail?.phase === 'render') return `${fileName}: rendering for OCR${page}`;
+  if (detail?.phase === 'ocr') return `${fileName}: OCR${page}${pct}`;
+  return `${fileName}: extracting text${page}${pct}`;
 }
 
 export default function ImportTest() {
@@ -35,6 +48,7 @@ export default function ImportTest() {
   const [selectedExam, setSelectedExam] = useState(examType);
   const [files, setFiles] = useState([]);
   const [analysis, setAnalysis] = useState(null);
+  const [analysisStatus, setAnalysisStatus] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -43,6 +57,7 @@ export default function ImportTest() {
 
   function invalidateAnalysis() {
     setAnalysis(null);
+    setAnalysisStatus('');
   }
 
   function addFiles(fileList) {
@@ -63,6 +78,7 @@ export default function ImportTest() {
   async function analyzeFiles() {
     setAnalyzing(true);
     setError('');
+    setAnalysisStatus('Preparing files…');
     try {
       const questionTexts = [];
       const answerTexts = [];
@@ -72,12 +88,16 @@ export default function ImportTest() {
       if (!candidates.length) throw new Error('Add at least one question paper or answer-key file first.');
 
       for (const item of candidates) {
-        if (!supportsTextExtraction(item.file)) {
-          extractionWarnings.push(`${item.file.name}: image/OCR parsing is not enabled yet.`);
+        if (!supportsExtraction(item.file)) {
+          extractionWarnings.push(`${item.file.name}: unsupported file type for text/OCR analysis.`);
           continue;
         }
         try {
-          const text = await extractTextFromFile(item.file);
+          setAnalysisStatus(`${item.file.name}: starting analysis…`);
+          const text = await extractTextFromFile(item.file, {
+            ocrFallback: true,
+            onProgress: (detail) => setAnalysisStatus(progressLabel(item.file.name, detail)),
+          });
           const target = item.kind === 'answer' ? answerTexts : questionTexts;
           target.push({ name: item.file.name, text });
         } catch (err) {
@@ -87,13 +107,16 @@ export default function ImportTest() {
 
       if (!questionTexts.length) {
         setAnalysis({ sections: [], questionCount: 0, answerCount: 0, matchedAnswers: 0, warnings: extractionWarnings });
-        throw new Error('No extractable question text was found. Text-based PDFs/TXT work now; scanned PDFs/images need OCR/vision parsing.');
+        throw new Error('No question text could be extracted. Try a clearer scan/photo or check the file role.');
       }
 
+      setAnalysisStatus('Parsing IELTS/TOEIC structure and matching answers…');
       const parsed = parseTestText(questionTexts, answerTexts, selectedExam);
       setAnalysis({ ...parsed, warnings: [...extractionWarnings, ...parsed.warnings] });
+      setAnalysisStatus(`Done · ${parsed.questionCount} questions · ${parsed.matchedAnswers} answers matched`);
     } catch (err) {
       setError(err.message);
+      setAnalysisStatus('');
     } finally {
       setAnalyzing(false);
     }
@@ -140,7 +163,7 @@ export default function ImportTest() {
       <div className="page-heading-row">
         <div>
           <h1>Import a test</h1>
-          <p className="muted">Upload a text-based PDF/TXT question paper and answer key. The parser will build an editable draft before you mark it ready.</p>
+          <p className="muted">Upload PDF/TXT/images plus an optional answer key and audio. Embedded text is used first; scans/photos automatically fall back to local OCR.</p>
         </div>
       </div>
 
@@ -168,7 +191,7 @@ export default function ImportTest() {
 
         <label className="drop-zone">
           <strong>Drop files here or click to browse</strong>
-          <span>Text PDF/TXT for parsing · images/audio are stored with the test</span>
+          <span>PDF · JPG/PNG · TXT · MP3/M4A/WAV · answer keys</span>
           <input
             type="file"
             multiple
@@ -200,10 +223,12 @@ export default function ImportTest() {
 
         <div className="analysis-actions">
           <button type="button" className="btn-secondary" onClick={analyzeFiles} disabled={analyzing || files.length === 0}>
-            {analyzing ? 'Analyzing PDF…' : 'Analyze files'}
+            {analyzing ? 'Analyzing…' : 'Analyze files'}
           </button>
-          <span className="muted">Run this before importing if you want questions and answers extracted automatically.</span>
+          <span className="muted">OCR runs only when necessary. Clear scans produce much better question numbering and answer mapping.</span>
         </div>
+
+        {analysisStatus && <div className={`analysis-progress ${analyzing ? 'running' : 'done'}`}>{analysisStatus}</div>}
 
         {analysis && (
           <section className="analysis-summary">
@@ -219,7 +244,7 @@ export default function ImportTest() {
         )}
 
         <div className="form-actions">
-          <button className="btn-primary" disabled={submitting}>
+          <button className="btn-primary" disabled={submitting || analyzing}>
             {submitting ? 'Importing…' : analysis?.questionCount ? 'Import parsed draft' : 'Import draft'}
           </button>
         </div>
