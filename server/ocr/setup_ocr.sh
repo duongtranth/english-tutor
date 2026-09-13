@@ -34,9 +34,9 @@ source .venv-ocr/bin/activate
 
 python -m pip install --upgrade pip wheel setuptools
 
-# Transformers is used intentionally because the VLM weights come directly from Hugging Face.
-# On Linux, the current PyTorch wheel normally carries the required CUDA runtime. If your
-# Blackwell/CUDA setup needs a vendor-specific wheel, install that torch build before rerunning.
+# Use PaddleOCR-VL's local Transformers engine so the VLM weights can be
+# downloaded directly from Hugging Face. PaddleOCR still runs the complete
+# document pipeline, including layout analysis before VLM recognition.
 python -m pip install --upgrade torch torchvision transformers accelerate safetensors pillow huggingface_hub
 python -m pip install --upgrade "paddleocr[doc-parser]"
 
@@ -51,4 +51,7 @@ Default device: GPU
 Restart the Node backend, then open Tests -> Import test.
 To force CPU inference:
   OCR_DEVICE=cpu npm run dev
+
+For NVIDIA RTX 50 / Blackwell GPUs, verify your NVIDIA driver supports CUDA 12.9+
+as required by PaddleOCR's current Blackwell guide.
 EOF
