@@ -55,7 +55,7 @@ Open `http://localhost:5173` in your browser and register a new account to get s
 
 ### Current parser scope
 
-The current parser is intentionally conservative. It supports common IELTS and TOEIC text layouts and keeps all generated data editable. Text-based PDFs are extracted in the browser with PDF.js loaded from jsDelivr. Scanned/image-only PDFs and uploaded images are stored with the test but are not OCR'd yet; those files need the planned OCR/vision adapter.
+The current parser is intentionally conservative. It supports common IELTS and TOEIC text layouts and keeps all generated data editable. Text-based PDFs are extracted in the browser with PDF.js loaded from jsDelivr, so PDF analysis needs internet access in the browser. Scanned/image-only PDFs and uploaded images are stored with the test but are not OCR'd yet; those files need the planned OCR/vision adapter.
 
 ## Development
 
