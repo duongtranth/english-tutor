@@ -2,5 +2,7 @@ node_modules/
 dist/
 server/data/
 server/uploads/
+server/models/
+server/.venv-ocr/
 *.log
 .env
