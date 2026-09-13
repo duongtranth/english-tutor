@@ -20,12 +20,7 @@ def main() -> None:
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     print(f"Downloading {REPO_ID} from Hugging Face")
     print(f"Destination: {MODEL_DIR}")
-    snapshot_download(
-        repo_id=REPO_ID,
-        local_dir=str(MODEL_DIR),
-        local_dir_use_symlinks=False,
-        resume_download=True,
-    )
+    snapshot_download(repo_id=REPO_ID, local_dir=str(MODEL_DIR))
     print("Model download complete.")
 
 
