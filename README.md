@@ -34,13 +34,19 @@ Open `http://localhost:5173` in your browser and register a new account to get s
 - Vocabulary flashcards with a spaced repetition system (Leitner boxes)
 - Grammar multiple-choice quizzes with answer explanations
 - Reading comprehension passages with multiple-choice questions
-- Listening practice (transcript read aloud via the Web Speech API) with multiple-choice questions
+- Listening practice with the original seed content
 - Dashboard tracking progress across each skill
 - Personal Test Library for IELTS/TOEIC
 - Upload question PDFs/TXT, answer keys, audio, and supporting images
 - Browser-side text extraction for text-based PDFs
 - Heuristic IELTS/TOEIC parser for sections, numbered questions, common question types, options, and answer keys
 - Editable parsed-test preview before a draft is marked ready
+- Imported audio playback in Listening sections
+- Timed or untimed Test Mode
+- Browser autosave and resume for in-progress tests
+- Automatic grading for supported question types
+- Attempt history with score, answered count, and elapsed time
+- Mistake Book collecting wrong answers from submitted imported tests
 
 ## Test import workflow
 
@@ -52,10 +58,16 @@ Open `http://localhost:5173` in your browser and register a new account to get s
 6. Import the parsed draft.
 7. Open **Edit parsed data** to correct question text, type, options, or answers.
 8. Mark the test ready after reviewing it.
+9. Start the test in timed or untimed mode.
+10. Submit to see the score and wrong answers; incorrect graded answers are added to **Mistake Book**.
 
 ### Current parser scope
 
-The current parser is intentionally conservative. It supports common IELTS and TOEIC text layouts and keeps all generated data editable. Text-based PDFs are extracted in the browser with PDF.js loaded from jsDelivr, so PDF analysis needs internet access in the browser. Scanned/image-only PDFs and uploaded images are stored with the test but are not OCR'd yet; those files need the planned OCR/vision adapter.
+The parser is intentionally conservative. It supports common IELTS and TOEIC text layouts and keeps all generated data editable. Text-based PDFs are extracted in the browser with PDF.js loaded from jsDelivr, so PDF analysis needs internet access in the browser.
+
+Supported structures include common IELTS Reading passages, IELTS Listening sections, TOEIC Parts 1–7, multiple choice, multiple select, TRUE/FALSE/NOT GIVEN, YES/NO/NOT GIVEN, matching headings/information, completion, and short-answer questions.
+
+Scanned/image-only PDFs and uploaded images are stored with the test but are not OCR'd yet. The import flow warns instead of silently guessing. An OCR/vision adapter can be added later without changing the current test schema.
 
 ## Development
 
