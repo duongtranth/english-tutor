@@ -1,15 +1,15 @@
 # English Tutor — TOEIC & IELTS
 
-Ứng dụng web học tiếng Anh với 4 kỹ năng (Từ vựng, Ngữ pháp, Đọc, Nghe), hỗ trợ cả TOEIC và IELTS.
+A web app for learning English across all four skills (Vocabulary, Grammar, Reading, Listening), supporting both the TOEIC and IELTS exams.
 
-## Kiến trúc
+## Architecture
 
-- `server/` — Node.js + Express, cơ sở dữ liệu SQLite (`node:sqlite` built-in), xác thực JWT.
+- `server/` — Node.js + Express, SQLite database (built-in `node:sqlite`), JWT authentication.
 - `client/` — React + Vite, React Router.
 
-## Chạy dự án
+## Running the project
 
-### Backend (cổng 4000)
+### Backend (port 4000)
 
 ```bash
 cd server
@@ -17,7 +17,7 @@ npm install
 npm run dev
 ```
 
-### Frontend (cổng 5173)
+### Frontend (port 5173)
 
 ```bash
 cd client
@@ -25,20 +25,20 @@ npm install
 npm run dev
 ```
 
-Mở trình duyệt tại `http://localhost:5173`, đăng ký tài khoản mới để bắt đầu.
+Open `http://localhost:5173` in your browser and register a new account to get started.
 
-## Tính năng
+## Features
 
-- Đăng ký / đăng nhập (JWT)
-- Chọn kỳ thi TOEIC hoặc IELTS, lưu theo từng người dùng
-- Flashcard từ vựng với hệ thống lặp lại ngắt quãng (Leitner box)
-- Trắc nghiệm ngữ pháp có giải thích đáp án
-- Bài đọc hiểu với câu hỏi trắc nghiệm
-- Bài nghe (dùng Web Speech API để đọc transcript) với câu hỏi trắc nghiệm
-- Dashboard theo dõi tiến độ từng kỹ năng
+- Register / login (JWT)
+- Switch between TOEIC and IELTS, tracked per user
+- Vocabulary flashcards with a spaced repetition system (Leitner boxes)
+- Grammar multiple-choice quizzes with answer explanations
+- Reading comprehension passages with multiple-choice questions
+- Listening practice (transcript read aloud via the Web Speech API) with multiple-choice questions
+- Dashboard tracking progress across each skill
 
-## Mở rộng thêm
+## Possible extensions
 
-- Thêm nhiều từ vựng / câu hỏi / bài đọc / bài nghe trong `server/src/seed.js`
-- Thêm audio thật thay vì text-to-speech cho phần Nghe
-- Thêm bài thi thử đầy đủ (full mock test) theo cấu trúc thật của TOEIC/IELTS
+- Add more vocabulary / questions / passages / listening items in `server/src/seed.js`
+- Use real audio recordings instead of text-to-speech for the Listening section
+- Add full-length mock tests matching the real TOEIC/IELTS format
