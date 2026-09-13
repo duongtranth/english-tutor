@@ -96,7 +96,7 @@ function QuestionInput({ question, value, onChange }) {
                     onChange(next);
                   }}
                 />
-                <span>{forced ? option : option}</span>
+                <span>{option}</span>
               </label>
             );
           })}
@@ -116,7 +116,7 @@ function QuestionInput({ question, value, onChange }) {
                 checked={value === answerValue}
                 onChange={() => onChange(answerValue)}
               />
-              <span>{forced ? option : option}</span>
+              <span>{option}</span>
             </label>
           );
         })}
@@ -150,6 +150,11 @@ export default function TakeTest() {
   const [result, setResult] = useState(null);
   const [savedProgress, setSavedProgress] = useState(null);
   const submittingRef = useRef(false);
+  const answersRef = useRef({});
+
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
 
   useEffect(() => {
     let active = true;
@@ -179,7 +184,7 @@ export default function TakeTest() {
     [questions, answers]
   );
 
-  function persist(nextAnswers = answers, nextStartedAt = startedAt, nextDuration = durationSeconds) {
+  function persist(nextAnswers = answersRef.current, nextStartedAt = startedAt, nextDuration = durationSeconds) {
     if (!nextStartedAt) return;
     localStorage.setItem(storageKey, JSON.stringify({
       answers: nextAnswers,
@@ -191,6 +196,7 @@ export default function TakeTest() {
   function start(timed) {
     const now = Date.now();
     const duration = timed ? suggestedMinutes(test) * 60 : null;
+    answersRef.current = {};
     setAnswers({});
     setStartedAt(now);
     setDurationSeconds(duration);
@@ -203,7 +209,9 @@ export default function TakeTest() {
   function resume() {
     const saved = savedProgress;
     if (!saved) return;
-    setAnswers(saved.answers || {});
+    const restoredAnswers = saved.answers || {};
+    answersRef.current = restoredAnswers;
+    setAnswers(restoredAnswers);
     setStartedAt(saved.startedAt);
     setDurationSeconds(saved.durationSeconds ?? null);
     if (saved.durationSeconds) {
@@ -218,6 +226,7 @@ export default function TakeTest() {
   function setAnswer(questionId, value) {
     setAnswers((current) => {
       const next = { ...current, [questionId]: value };
+      answersRef.current = next;
       persist(next);
       return next;
     });
@@ -231,7 +240,7 @@ export default function TakeTest() {
     setError('');
     try {
       const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-      const data = await api.submitTest(id, answers, elapsed);
+      const data = await api.submitTest(id, answersRef.current, elapsed);
       localStorage.removeItem(storageKey);
       setResult(data);
       setMode('result');
@@ -254,7 +263,7 @@ export default function TakeTest() {
     tick();
     const timer = window.setInterval(tick, 1000);
     return () => window.clearInterval(timer);
-  }, [mode, durationSeconds, startedAt]); // submit intentionally uses current state via render closure
+  }, [mode, durationSeconds, startedAt]);
 
   if (loading) return <main className="page"><p>Loading test…</p></main>;
   if (error && !test) return <main className="page"><div className="alert error">{error}</div></main>;
