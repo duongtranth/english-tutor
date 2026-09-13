@@ -11,10 +11,13 @@ const grammarRoutes = require('./routes/grammar');
 const readingRoutes = require('./routes/reading');
 const listeningRoutes = require('./routes/listening');
 const progressRoutes = require('./routes/progress');
+const testRoutes = require('./routes/tests');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+// Phase 1 imports encode local PDF/audio files as base64 JSON.
+// Keep this generous enough for one personal practice test bundle.
+app.use(express.json({ limit: '80mb' }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/vocab', vocabRoutes);
@@ -22,6 +25,7 @@ app.use('/api/grammar', grammarRoutes);
 app.use('/api/reading', readingRoutes);
 app.use('/api/listening', listeningRoutes);
 app.use('/api/progress', progressRoutes);
+app.use('/api/tests', testRoutes);
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
