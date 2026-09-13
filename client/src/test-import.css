@@ -93,6 +93,10 @@ textarea:focus { border-color: var(--primary); }
 
 /* Mistake book */
 .mistakes-page { max-width: 900px; }
+.mistake-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.mistake-summary-grid .card { display: flex; flex-direction: column; gap: 5px; padding: 16px; }
+.mistake-summary-grid span { color: var(--muted); font-size: 12px; }
+.mistake-summary-grid strong { font-size: 20px; text-transform: capitalize; }
 .mistake-filters { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 18px; }
 .mistake-filters button { background: #fff; color: var(--muted); border: 1px solid var(--border); padding: 7px 10px; font-size: 12px; text-transform: capitalize; }
 .mistake-filters button.active { background: #eef2ff; color: var(--primary); border-color: #a5b4fc; }
@@ -110,6 +114,7 @@ textarea:focus { border-color: var(--primary); }
   .section-heading-row { flex-direction: column; }
   .form-row.three-cols { grid-template-columns: 1fr; }
   .attempt-history-row { grid-template-columns: 1fr 1fr; }
+  .mistake-summary-grid { grid-template-columns: 1fr; }
   .take-sticky-header { top: 116px; grid-template-columns: 1fr auto; }
   .take-sticky-header > button { grid-column: 1 / -1; }
   .take-section-heading { flex-direction: column; }
