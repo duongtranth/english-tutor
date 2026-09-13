@@ -22,6 +22,18 @@ async function request(path, { method = 'GET', body, auth = true } = {}) {
   return data;
 }
 
+async function requestBlob(path) {
+  const headers = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}${path}`, { headers });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Request failed with status ${res.status}`);
+  }
+  return res.blob();
+}
+
 export const api = {
   register: (email, password, name) =>
     request('/auth/register', { method: 'POST', body: { email, password, name }, auth: false }),
@@ -49,6 +61,13 @@ export const api = {
 
   tests: (examType) => request(`/tests${examType ? `?examType=${examType}` : ''}`),
   test: (id) => request(`/tests/${id}`),
+  testForTaking: (id) => request(`/tests/${id}/take`),
+  testAttempts: (id) => request(`/tests/${id}/attempts`),
+  testAttempt: (id, attemptId) => request(`/tests/${id}/attempts/${attemptId}`),
+  submitTest: (id, answers, elapsedSeconds) =>
+    request(`/tests/${id}/submit`, { method: 'POST', body: { answers, elapsedSeconds } }),
+  testMistakes: (examType) => request(`/tests/mistakes${examType ? `?examType=${examType}` : ''}`),
+  testFile: (id, fileId) => requestBlob(`/tests/${id}/files/${fileId}`),
   importTest: (payload) => request('/tests/import', { method: 'POST', body: payload }),
   replaceTestStructure: (id, sections) => request(`/tests/${id}/structure`, { method: 'PUT', body: { sections } }),
   updateTest: (id, payload) => request(`/tests/${id}`, { method: 'PATCH', body: payload }),
