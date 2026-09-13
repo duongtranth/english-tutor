@@ -53,7 +53,9 @@ Open `http://localhost:5173` in your browser and register a new account to get s
 
 ## Local document OCR
 
-The preferred OCR backend is **`PaddlePaddle/PaddleOCR-VL-1.6`** from Hugging Face. The model weights are not committed to this repository. Setup downloads them once into `server/models/PaddleOCR-VL-1.6/`, and that directory is ignored by Git.
+The preferred OCR backend is **`PaddlePaddle/PaddleOCR-VL-1.6`** from Hugging Face: https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.6
+
+The model weights are not committed to this repository. Setup downloads them once into `server/models/PaddleOCR-VL-1.6/`, and that directory is ignored by Git.
 
 PaddleOCR-VL uses a full document-parsing pipeline rather than line-only OCR: it analyzes page layout/reading order and then performs VLM recognition. This is useful for IELTS/TOEIC pages containing multiple columns, forms, tables, diagrams, and mixed layouts.
 
