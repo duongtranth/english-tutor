@@ -47,5 +47,12 @@ export const api = {
   listeningAttempt: (id, answers) =>
     request(`/listening/items/${id}/attempt`, { method: 'POST', body: { answers } }),
 
+  tests: (examType) => request(`/tests${examType ? `?examType=${examType}` : ''}`),
+  test: (id) => request(`/tests/${id}`),
+  importTest: (payload) => request('/tests/import', { method: 'POST', body: payload }),
+  replaceTestStructure: (id, sections) => request(`/tests/${id}/structure`, { method: 'PUT', body: { sections } }),
+  updateTest: (id, payload) => request(`/tests/${id}`, { method: 'PATCH', body: payload }),
+  deleteTest: (id) => request(`/tests/${id}`, { method: 'DELETE' }),
+
   progressSummary: () => request('/progress/summary'),
 };
