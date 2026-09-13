@@ -11,6 +11,9 @@ router.use(requireAuth);
 const uploadsDir = path.join(__dirname, '..', '..', 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
+const VALID_SKILLS = new Set(['reading', 'listening', 'writing', 'speaking', 'mixed']);
+const VALID_FILE_KINDS = new Set(['question', 'audio', 'answer', 'other']);
+
 function parseJson(value, fallback) {
   try { return JSON.parse(value); } catch { return fallback; }
 }
@@ -29,6 +32,50 @@ function serializeTest(test) {
     })),
   }));
   return { ...test, files, sections };
+}
+
+function insertStructure(testId, sections, fileIdByClientKey = new Map()) {
+  const insertSection = db.prepare(`
+    INSERT INTO test_sections (test_id, skill, section_number, title, instructions, passage, audio_file_id, metadata_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const insertQuestion = db.prepare(`
+    INSERT INTO test_questions (section_id, question_number, question_type, prompt, options_json, correct_answer_json, explanation, metadata_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const ownsFile = db.prepare('SELECT id FROM test_files WHERE id = ? AND test_id = ?');
+
+  for (const [index, section] of (sections || []).entries()) {
+    const skill = VALID_SKILLS.has(section.skill) ? section.skill : 'mixed';
+    let audioFileId = null;
+    if (section.audioClientKey) audioFileId = fileIdByClientKey.get(section.audioClientKey) || null;
+    if (!audioFileId && section.audioFileId && ownsFile.get(section.audioFileId, testId)) audioFileId = Number(section.audioFileId);
+
+    const sectionInfo = insertSection.run(
+      testId,
+      skill,
+      Number(section.sectionNumber) || index + 1,
+      section.title || null,
+      section.instructions || null,
+      section.passage || null,
+      audioFileId,
+      JSON.stringify(section.metadata || {})
+    );
+    const sectionId = Number(sectionInfo.lastInsertRowid);
+
+    for (const [qIndex, question] of (section.questions || []).slice(0, 500).entries()) {
+      insertQuestion.run(
+        sectionId,
+        Number(question.questionNumber) || qIndex + 1,
+        String(question.questionType || 'multiple_choice').slice(0, 80),
+        String(question.prompt || `Question ${qIndex + 1}`).slice(0, 20000),
+        JSON.stringify(Array.isArray(question.options) ? question.options : []),
+        JSON.stringify(question.correctAnswer ?? null),
+        question.explanation || null,
+        JSON.stringify(question.metadata || {})
+      );
+    }
+  }
 }
 
 router.get('/', (req, res) => {
@@ -70,17 +117,9 @@ router.post('/import', (req, res) => {
 
   const insertTest = db.prepare('INSERT INTO tests (user_id, exam_type, title, source, status) VALUES (?, ?, ?, ?, ?)');
   const insertFile = db.prepare('INSERT INTO test_files (test_id, kind, original_name, stored_name, mime_type, size) VALUES (?, ?, ?, ?, ?, ?)');
-  const insertSection = db.prepare(`
-    INSERT INTO test_sections (test_id, skill, section_number, title, instructions, passage, audio_file_id, metadata_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  const insertQuestion = db.prepare(`
-    INSERT INTO test_questions (section_id, question_number, question_type, prompt, options_json, correct_answer_json, explanation, metadata_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
   const writtenFiles = [];
   let testId = null;
+
   try {
     db.exec('BEGIN');
     testId = Number(insertTest.run(req.userId, examType, title.trim(), source.trim(), 'draft').lastInsertRowid);
@@ -88,7 +127,7 @@ router.post('/import', (req, res) => {
 
     for (const file of files) {
       if (!file?.name || !file?.dataBase64) continue;
-      const kind = ['question', 'audio', 'answer', 'other'].includes(file.kind) ? file.kind : 'other';
+      const kind = VALID_FILE_KINDS.has(file.kind) ? file.kind : 'other';
       const safeExt = path.extname(file.name).slice(0, 12).replace(/[^.a-zA-Z0-9]/g, '');
       const storedName = `${testId}-${crypto.randomUUID()}${safeExt}`;
       const raw = String(file.dataBase64).includes(',') ? String(file.dataBase64).split(',').pop() : String(file.dataBase64);
@@ -100,34 +139,7 @@ router.post('/import', (req, res) => {
       if (file.clientKey) fileIdByClientKey.set(file.clientKey, Number(info.lastInsertRowid));
     }
 
-    for (const [index, section] of sections.entries()) {
-      const skill = ['reading', 'listening', 'writing', 'speaking', 'mixed'].includes(section.skill) ? section.skill : 'mixed';
-      const audioFileId = section.audioClientKey ? fileIdByClientKey.get(section.audioClientKey) || null : null;
-      const sectionInfo = insertSection.run(
-        testId,
-        skill,
-        Number(section.sectionNumber) || index + 1,
-        section.title || null,
-        section.instructions || null,
-        section.passage || null,
-        audioFileId,
-        JSON.stringify(section.metadata || {})
-      );
-      const sectionId = Number(sectionInfo.lastInsertRowid);
-      for (const [qIndex, question] of (section.questions || []).entries()) {
-        insertQuestion.run(
-          sectionId,
-          Number(question.questionNumber) || qIndex + 1,
-          question.questionType || 'multiple_choice',
-          question.prompt || `Question ${qIndex + 1}`,
-          JSON.stringify(question.options || []),
-          JSON.stringify(question.correctAnswer ?? null),
-          question.explanation || null,
-          JSON.stringify(question.metadata || {})
-        );
-      }
-    }
-
+    insertStructure(testId, sections, fileIdByClientKey);
     db.exec('COMMIT');
     const test = db.prepare('SELECT * FROM tests WHERE id = ? AND user_id = ?').get(testId, req.userId);
     res.status(201).json(serializeTest(test));
@@ -138,6 +150,27 @@ router.post('/import', (req, res) => {
     }
     console.error(err);
     res.status(500).json({ error: 'Failed to import test' });
+  }
+});
+
+router.put('/:id/structure', (req, res) => {
+  const test = db.prepare('SELECT * FROM tests WHERE id = ? AND user_id = ?').get(req.params.id, req.userId);
+  if (!test) return res.status(404).json({ error: 'Test not found' });
+  const sections = req.body?.sections;
+  if (!Array.isArray(sections)) return res.status(400).json({ error: 'sections must be an array' });
+  if (sections.length > 50) return res.status(400).json({ error: 'Too many sections' });
+
+  try {
+    db.exec('BEGIN');
+    db.prepare('DELETE FROM test_sections WHERE test_id = ?').run(test.id);
+    insertStructure(test.id, sections);
+    db.prepare(`UPDATE tests SET status = 'draft', updated_at = datetime('now') WHERE id = ?`).run(test.id);
+    db.exec('COMMIT');
+    res.json(serializeTest(db.prepare('SELECT * FROM tests WHERE id = ?').get(test.id)));
+  } catch (err) {
+    try { db.exec('ROLLBACK'); } catch {}
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update test structure' });
   }
 });
 
