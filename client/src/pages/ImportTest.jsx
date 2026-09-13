@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -31,13 +31,30 @@ function supportsExtraction(file) {
     name.endsWith('.pdf') || name.endsWith('.txt') || name.endsWith('.md') || /\.(png|jpe?g|webp|bmp|tiff?)$/i.test(name);
 }
 
+function isPdf(file) {
+  return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+}
+
+function isImage(file) {
+  return file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|tiff?)$/i.test(file.name);
+}
+
+function isText(file) {
+  const name = file.name.toLowerCase();
+  return file.type.startsWith('text/') || name.endsWith('.txt') || name.endsWith('.md');
+}
+
+function meaningfulText(text) {
+  return String(text || '').replace(/--- PAGE BREAK ---/g, '').replace(/\s+/g, '').length >= 80;
+}
+
 function progressLabel(fileName, detail) {
   const page = detail?.page ? ` · page ${detail.page}${detail.pages ? `/${detail.pages}` : ''}` : '';
   const pct = typeof detail?.progress === 'number' ? ` · ${Math.round(detail.progress * 100)}%` : '';
-  if (detail?.phase === 'ocr-fallback') return `${fileName}: no embedded text found — switching to OCR…`;
-  if (detail?.phase === 'render') return `${fileName}: rendering for OCR${page}`;
-  if (detail?.phase === 'ocr') return `${fileName}: OCR${page}${pct}`;
-  return `${fileName}: extracting text${page}${pct}`;
+  if (detail?.phase === 'ocr-fallback') return `${fileName}: PaddleOCR-VL unavailable — using browser OCR…`;
+  if (detail?.phase === 'render') return `${fileName}: rendering for browser OCR${page}`;
+  if (detail?.phase === 'ocr') return `${fileName}: browser OCR${page}${pct}`;
+  return `${fileName}: extracting embedded text${page}${pct}`;
 }
 
 export default function ImportTest() {
@@ -49,11 +66,20 @@ export default function ImportTest() {
   const [files, setFiles] = useState([]);
   const [analysis, setAnalysis] = useState(null);
   const [analysisStatus, setAnalysisStatus] = useState('');
+  const [ocrStatus, setOcrStatus] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   const totalSize = useMemo(() => files.reduce((sum, item) => sum + item.file.size, 0), [files]);
+
+  useEffect(() => {
+    let active = true;
+    api.ocrStatus()
+      .then((status) => active && setOcrStatus(status))
+      .catch(() => active && setOcrStatus(null));
+    return () => { active = false; };
+  }, []);
 
   function invalidateAnalysis() {
     setAnalysis(null);
@@ -75,6 +101,58 @@ export default function ImportTest() {
     invalidateAnalysis();
   }
 
+  async function runLocalOcr(file) {
+    if (file.size > 40 * 1024 * 1024) throw new Error(`${file.name}: local OCR input must be 40 MB or smaller.`);
+    setAnalysisStatus(`${file.name}: running PaddleOCR-VL-1.6 locally…`);
+    const result = await api.ocrDocument({
+      name: file.name,
+      type: file.type,
+      dataBase64: await readAsDataUrl(file),
+    });
+    if (!meaningfulText(result.text)) throw new Error(`${file.name}: PaddleOCR-VL returned too little readable text.`);
+    return result.text;
+  }
+
+  async function extractForAnalysis(file, warnings) {
+    if (isText(file)) {
+      return extractTextFromFile(file, {
+        ocrFallback: false,
+        onProgress: (detail) => setAnalysisStatus(progressLabel(file.name, detail)),
+      });
+    }
+
+    if (isPdf(file)) {
+      let embedded = '';
+      try {
+        embedded = await extractTextFromFile(file, {
+          ocrFallback: false,
+          onProgress: (detail) => setAnalysisStatus(progressLabel(file.name, detail)),
+        });
+      } catch (err) {
+        warnings.push(`${file.name}: embedded-text extraction failed (${err.message}). Trying local document OCR.`);
+      }
+      if (meaningfulText(embedded)) return embedded;
+    }
+
+    if (isImage(file) || isPdf(file)) {
+      try {
+        const text = await runLocalOcr(file);
+        warnings.push(`${file.name}: parsed with local PaddleOCR-VL-1.6.`);
+        return text;
+      } catch (localErr) {
+        warnings.push(`${file.name}: PaddleOCR-VL unavailable or failed (${localErr.message}). Falling back to browser Tesseract OCR.`);
+        setAnalysisStatus(`${file.name}: local model failed — using browser OCR fallback…`);
+        const fallback = await extractTextFromFile(file, {
+          ocrFallback: true,
+          onProgress: (detail) => setAnalysisStatus(progressLabel(file.name, detail)),
+        });
+        return fallback;
+      }
+    }
+
+    throw new Error(`${file.name}: unsupported file type for text/OCR analysis.`);
+  }
+
   async function analyzeFiles() {
     setAnalyzing(true);
     setError('');
@@ -94,10 +172,7 @@ export default function ImportTest() {
         }
         try {
           setAnalysisStatus(`${item.file.name}: starting analysis…`);
-          const text = await extractTextFromFile(item.file, {
-            ocrFallback: true,
-            onProgress: (detail) => setAnalysisStatus(progressLabel(item.file.name, detail)),
-          });
+          const text = await extractForAnalysis(item.file, extractionWarnings);
           const target = item.kind === 'answer' ? answerTexts : questionTexts;
           target.push({ name: item.file.name, text });
         } catch (err) {
@@ -163,7 +238,7 @@ export default function ImportTest() {
       <div className="page-heading-row">
         <div>
           <h1>Import a test</h1>
-          <p className="muted">Upload PDF/TXT/images plus an optional answer key and audio. Embedded text is used first; scans/photos automatically fall back to local OCR.</p>
+          <p className="muted">Upload PDF/TXT/images plus an optional answer key and audio. Embedded PDF text is used first; scans and photos use local PaddleOCR-VL-1.6, with browser OCR only as a fallback.</p>
         </div>
       </div>
 
@@ -225,7 +300,13 @@ export default function ImportTest() {
           <button type="button" className="btn-secondary" onClick={analyzeFiles} disabled={analyzing || files.length === 0}>
             {analyzing ? 'Analyzing…' : 'Analyze files'}
           </button>
-          <span className="muted">OCR runs only when necessary. Clear scans produce much better question numbering and answer mapping.</span>
+          <div className={`local-ocr-status ${ocrStatus?.ready ? 'ready' : 'missing'}`}>
+            {ocrStatus?.ready ? (
+              <><strong>PaddleOCR-VL-1.6 ready</strong><span>Local · {ocrStatus.device}</span></>
+            ) : (
+              <><strong>Local model not installed</strong><span>Run: cd server &amp;&amp; bash ocr/setup_ocr.sh</span></>
+            )}
+          </div>
         </div>
 
         {analysisStatus && <div className={`analysis-progress ${analyzing ? 'running' : 'done'}`}>{analysisStatus}</div>}
