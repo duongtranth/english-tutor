@@ -147,9 +147,33 @@ CREATE TABLE IF NOT EXISTS test_questions (
   metadata_json TEXT NOT NULL DEFAULT '{}'
 );
 
+CREATE TABLE IF NOT EXISTS test_attempts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  test_id INTEGER NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  score INTEGER NOT NULL DEFAULT 0,
+  total INTEGER NOT NULL DEFAULT 0,
+  answered_count INTEGER NOT NULL DEFAULT 0,
+  elapsed_seconds INTEGER NOT NULL DEFAULT 0,
+  started_at TEXT DEFAULT (datetime('now')),
+  submitted_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS test_attempt_answers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  attempt_id INTEGER NOT NULL REFERENCES test_attempts(id) ON DELETE CASCADE,
+  question_id INTEGER NOT NULL REFERENCES test_questions(id) ON DELETE CASCADE,
+  user_answer_json TEXT NOT NULL DEFAULT 'null',
+  correct_answer_json TEXT NOT NULL DEFAULT 'null',
+  is_correct INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(attempt_id, question_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_tests_user ON tests(user_id, exam_type, created_at);
 CREATE INDEX IF NOT EXISTS idx_test_sections_test ON test_sections(test_id, section_number);
 CREATE INDEX IF NOT EXISTS idx_test_questions_section ON test_questions(section_id, question_number);
+CREATE INDEX IF NOT EXISTS idx_test_attempts_user ON test_attempts(user_id, test_id, submitted_at);
+CREATE INDEX IF NOT EXISTS idx_test_attempt_answers_attempt ON test_attempt_answers(attempt_id, is_correct);
 `);
 
 module.exports = db;
