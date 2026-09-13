@@ -152,9 +152,7 @@ export default function TakeTest() {
   const submittingRef = useRef(false);
   const answersRef = useRef({});
 
-  useEffect(() => {
-    answersRef.current = answers;
-  }, [answers]);
+  useEffect(() => { answersRef.current = answers; }, [answers]);
 
   useEffect(() => {
     let active = true;
@@ -172,25 +170,15 @@ export default function TakeTest() {
     return () => { active = false; };
   }, [id, storageKey]);
 
-  const questions = useMemo(
-    () => (test?.sections || []).flatMap((section) => section.questions || []),
-    [test]
-  );
-  const answeredCount = useMemo(
-    () => questions.filter((question) => {
-      const value = answers[question.id];
-      return Array.isArray(value) ? value.length > 0 : String(value ?? '').trim() !== '';
-    }).length,
-    [questions, answers]
-  );
+  const questions = useMemo(() => (test?.sections || []).flatMap((section) => section.questions || []), [test]);
+  const answeredCount = useMemo(() => questions.filter((question) => {
+    const value = answers[question.id];
+    return Array.isArray(value) ? value.length > 0 : String(value ?? '').trim() !== '';
+  }).length, [questions, answers]);
 
   function persist(nextAnswers = answersRef.current, nextStartedAt = startedAt, nextDuration = durationSeconds) {
     if (!nextStartedAt) return;
-    localStorage.setItem(storageKey, JSON.stringify({
-      answers: nextAnswers,
-      startedAt: nextStartedAt,
-      durationSeconds: nextDuration,
-    }));
+    localStorage.setItem(storageKey, JSON.stringify({ answers: nextAnswers, startedAt: nextStartedAt, durationSeconds: nextDuration }));
   }
 
   function start(timed) {
@@ -221,6 +209,11 @@ export default function TakeTest() {
       setTimeLeft(null);
     }
     setMode('running');
+  }
+
+  function discardSavedAttempt() {
+    localStorage.removeItem(storageKey);
+    setSavedProgress(null);
   }
 
   function setAnswer(questionId, value) {
@@ -286,7 +279,10 @@ export default function TakeTest() {
             <div className="resume-box">
               <strong>Saved attempt found</strong>
               <span>Your answers were autosaved in this browser.</span>
-              <button className="btn-secondary" onClick={resume}>Resume attempt</button>
+              <div className="inline-actions">
+                <button className="btn-secondary" onClick={resume}>Resume attempt</button>
+                <button className="btn-link danger" onClick={discardSavedAttempt}>Discard</button>
+              </div>
             </div>
           )}
         </section>
@@ -308,7 +304,7 @@ export default function TakeTest() {
           <div className="take-setup-actions">
             <button className="btn-primary" onClick={() => { setResult(null); setMode('setup'); }}>Retake</button>
             <Link className="btn-secondary" to="/mistakes">Open Mistake Book</Link>
-            <Link className="btn-secondary" to="/tests">Test Library</Link>
+            <Link className="btn-secondary" to={`/tests/${id}`}>Attempt history</Link>
           </div>
         </section>
 
@@ -372,11 +368,7 @@ export default function TakeTest() {
               <article className="card take-question" id={`question-${question.id}`} key={question.id}>
                 <div className="question-kicker">Question {question.question_number} · {question.question_type.replaceAll('_', ' ')}</div>
                 <p className="quiz-prompt">{question.prompt}</p>
-                <QuestionInput
-                  question={question}
-                  value={answers[question.id]}
-                  onChange={(value) => setAnswer(question.id, value)}
-                />
+                <QuestionInput question={question} value={answers[question.id]} onChange={(value) => setAnswer(question.id, value)} />
               </article>
             ))}
           </div>
